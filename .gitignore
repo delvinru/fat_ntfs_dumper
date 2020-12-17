@@ -1,0 +1,4 @@
+# Ignore test folder with big imagers
+test/*
+# Ignore pycache folder
+lib/__pycache__
