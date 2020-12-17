@@ -10,7 +10,7 @@ def main(args):
         exit(0)
     
     if args.catalog:
-        get_info_about_catalogs(args.file)
+        get_info_about_catalogs(args)
         exit(0)
 
 if __name__ == "__main__":
@@ -36,8 +36,13 @@ if __name__ == "__main__":
 
     parser.add_argument(
         '-c', '--catalog',
-        action='store_true',
         help='Print info about existing files'
+    )
+
+    parser.add_argument(
+        '-j', '--json',
+        action='store_true',
+        help='Print data in json'
     )
 
     args = parser.parse_args()

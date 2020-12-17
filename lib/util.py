@@ -12,6 +12,6 @@ def get_info_about_filesystem(filename: str) -> str:
         FAT(filename).print_info()
     
 
-def get_info_about_catalogs(filename: str) -> None:
-    obj = FAT(filename)
+def get_info_about_catalogs(args: str) -> None:
+    obj = FAT(args)
     obj.print_catalogs()
