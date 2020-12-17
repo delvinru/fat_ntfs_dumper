@@ -6,15 +6,30 @@ from lib.util import *
 def main(args):
     # Step 1
     if args.info:
-        get_info_about_filesystem(args.file)
+        get_info_about_filesystem(args)
         exit(0)
     
-    if args.catalog:
+    if args.list:
         get_info_about_catalogs(args)
         exit(0)
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='Help menu for program')
+    usage = """Usage:
+Print info about root directory:
+python3 main.py -f testfile.img -l /
+
+Print info about files in catalog:
+python3 main.py -f testfile.img -l /somecatalog/
+
+Extract file from path:
+python3 main.py -f testfile.img -l /somefile.txt -e
+python3 main.py -f testfile.img -l /catalog/somefile.txt -e
+"""
+    parser = argparse.ArgumentParser(
+        description='Help menu for program',
+        epilog = usage,
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
 
     parser.add_argument(
         '-f', '--file',
@@ -35,7 +50,9 @@ if __name__ == "__main__":
     )
 
     parser.add_argument(
-        '-c', '--catalog',
+        '-l', '--list',
+        metavar="<file> or <directory with / in end>",
+        default='/',
         help='Print info about existing files'
     )
 
@@ -43,6 +60,12 @@ if __name__ == "__main__":
         '-j', '--json',
         action='store_true',
         help='Print data in json'
+    )
+
+    parser.add_argument(
+        '-e', '--extract',
+        action='store_true',
+        help='Extract file or files from path'
     )
 
     args = parser.parse_args()

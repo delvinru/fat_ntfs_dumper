@@ -1,5 +1,6 @@
 from datetime import datetime
 import json
+from string import printable
 
 
 class FAT(object):
@@ -10,7 +11,7 @@ class FAT(object):
         self.FILE_ATTRIBUTE   = 0x20
         self.DIR_ATTRIBUTE    = 0x10
 
-        self.catalog          = args.catalog
+        self.catalog          = args.list
         self.json             = args.json
 
         self.data             = data
@@ -25,9 +26,10 @@ class FAT(object):
         self.s_mft_table      = self.f_mft_table + self.mft_size
         self.root_addr        = self.s_mft_table + self.mft_size
         self.data_addr        = self.root_addr + (self.number_of_root * 0x20)
-        self.files            = []
+        self.files            = [] 
+        self.tmp              = []
 
-    def print_info(self):
+    def print_info(self) -> None:
         info =   'Информация о файловой системе\n\n'
         info += f'Размер сектора: {hex(self.sector_size)}\n'
         info += f'Размер кластера: {hex(self.cluster_size)}\n'
@@ -43,25 +45,72 @@ class FAT(object):
 
         print(info)
     
-    def print_catalogs(self):
-        self.__init_entity(self)
+    def print_catalogs(self) -> None:
+        self.__init_entities()
+        path = [x for x in self.catalog.split('/') if x]
 
         if self.json:
-            json.dumps(self.files)
-        else:
-            print('Listing catalog:', self.catalog)
-            for el in self.files:
-                info  = f"{el['Type']} {el['CreateTime']} {el['Name']} ({el['8DOT3Name']}) Cluster:{el['Cluster']} Size:{el['Size']} "
-                if el['isDeleted']:
-                    info += 'File deleted'
-                print(info)
+            print(json.dumps(self.files))
+            exit(0)
 
-    def __init_entity(self, catalog):
+        print(path)
+
+        if len(path) == 0:
+            self.__print_entity(self.files)
+            exit(0)
+        else:
+            entity = self.__find_entity_by_path(path, self.files)
+            self.__print_entity(entity)
+            exit(0)
+
+
+    def __find_entity_by_path(self, path, entities) -> list:
+            
+        for entity in entities:
+            if entity['Name'] == path[0]:
+                if entity['Name'] == path[0]:
+                    path.pop(0)
+                    if len(path) == 0:
+                        return entity
+                    return self.__find_entity_by_path(path, entity['Elements'])
+    
+    def __print_entity(self, entity : list):
+        print('Listing catalog:', self.catalog, end='\n\n')
+        if type(entity) != list:
+            try:
+                if entity['Type'] == 'f':
+                    self.__extract_entity(entity)
+                    exit(0)
+            except TypeError:
+                print('[!] Error, file or dir not exist')
+                exit(0)
+
+            if entity['Type'] == 'd':
+                entity = entity['Elements']
+
+        for el in entity:
+            directory = ''
+            isdeleted = ''
+            if el['isDeleted']:
+                isdeleted = ' (File deleted)'
+
+            if el['Type'] == 'd':
+                directory = '/'
+            info  = f"{el['Type']} {el['CreateTime']} {el['Name']}{directory} ({el['8DOT3Name']}) Cluster:{el['Cluster']} Size:{el['Size']}{isdeleted}"
+            print(info)
+    
+    def __extract_entity(self, entity):
+        print('while not supported')
+        pass
+
+    def __parse_dir(self, start_addr: int, subdir: bool) -> None:
         BS = 32
         entry = []
-        RA = self.root_addr
+        RA = start_addr
         i = 0
         deletedfile = b''
+
+        # Read root catalog
         while True:
             count = self.data[RA+BS*i]
 
@@ -74,15 +123,24 @@ class FAT(object):
                 entry.append(deletedfile)
                 deletedfile = b''
 
+            if count == 0x2E:
+                # hidden dir
+                pass
+
             if count == 0:
                 break
-            
-            entry.append(self.data[RA + BS*i: RA + BS*(i+count-0x3F)])
-            i += (count - 0x3F)
-        
-        self.__parse_file_entinity(entry)
-        
-    def __parse_file_entinity(self, entry):
+
+            if count > 0x40:
+                # file with 0x41, 0x42 and others bytes
+                entry.append(self.data[RA + BS*i: RA + BS*(i+count-0x3F)])
+                i += (count - 0x3F)
+            else:
+                entry.append(self.data[RA + BS*i: RA + BS*(i+1)])
+                i += 1
+
+        self.__parse_file_entinity(entry, subdir)
+
+    def __parse_file_entinity(self, entry : list, subdir: bool):
         for el in entry:
             long_name  = False
             is_deleted = False
@@ -96,42 +154,89 @@ class FAT(object):
             size      = self.__get_size(el)
             cluster   = self.__get_cluster(el)
 
-            if len(el)//32 == 2:
+            if len(el)//32 == 1:
                 long_name = shortname.lower()
             else:
                 long_name = self.__get_long_name(el)
+            
+            if filetype == 'd':
+                if not subdir:
+                    self.files.append({
+                        "Type": filetype,
+                        "8DOT3Name": shortname,
+                        'Name' : long_name,
+                        'Size' : size,
+                        'CreateTime' : time,
+                        'Cluster' : cluster,
+                        'isDeleted' : is_deleted,
+                        'Elements': []
+                    })
+                else:
+                    self.tmp.append({
+                        "Type": filetype,
+                        "8DOT3Name": shortname,
+                        'Name' : long_name,
+                        'Size' : size,
+                        'CreateTime' : time,
+                        'Cluster' : cluster,
+                        'isDeleted' : is_deleted,
+                        'Elements': []
+                    })
+            else:
+                if not subdir:
+                    self.files.append({
+                        "Type": filetype,
+                        "8DOT3Name": shortname,
+                        'Name' : long_name,
+                        'Size' : size,
+                        'CreateTime' : time,
+                        'Cluster' : cluster,
+                        'isDeleted' : is_deleted
+                    })
+                else:
+                    self.tmp.append({
+                        "Type": filetype,
+                        "8DOT3Name": shortname,
+                        'Name' : long_name,
+                        'Size' : size,
+                        'CreateTime' : time,
+                        'Cluster' : cluster,
+                        'isDeleted' : is_deleted,
+                    })
 
+    def __init_entities(self):
+        # parse root directory
+        self.__parse_dir(self.root_addr, False)
 
-            self.files.append(
-                {
-                    "Type": filetype,
-                    "8DOT3Name": shortname,
-                    'Name' : long_name,
-                    'Size' : size,
-                    'CreateTime' : time,
-                    'Cluster' : cluster,
-                    'isDeleted' : is_deleted
-                }
-            )
+        def recursive_parse_dir(entity: dict):
+            for element in entity:
+                if element.get('Elements') == []:
+                    if element['Name'] == '.' or element['Name'] == '..':
+                        continue
 
+                    self.__parse_dir(self.data_addr + self.cluster_size * (int(element['Cluster'], 16) - 2), True)
+                    element.update({
+                        'Elements': self.tmp
+                    })
+                    self.tmp = []
+                    recursive_parse_dir(element['Elements'])
+            return entity
+            
+        # parse others directory
+        self.files = recursive_parse_dir(self.files)
+        
     def __get_cluster(self, file):
         return hex(int.from_bytes(file[-6:-4], 'little'))
 
     def __get_name(self, file):
         name = file[-32:-21]
-        sem = ''
-        try:
-            fpart = name[:8].rstrip().decode()
-            lpart = name[8:].rstrip().decode()
-            sem = '.'
-        except:
-            fpart = name[:8].rstrip()
-            lpart = name[8:].rstrip()
-            sem = b'.'
+        # remove non printable characher
+        fpart = ''.join(list(filter(lambda x: x in printable, name[:8].rstrip().decode(errors='ignore'))))
+        lpart = ''.join(list(filter(lambda x: x in printable, name[8:].rstrip().decode(errors='ignore'))))
         if not len(lpart):
             return fpart
         else:
-            return fpart + sem + lpart
+            return fpart + '.' + lpart
 
     def __get_long_name(self, file):
         BS = 32
@@ -142,7 +247,7 @@ class FAT(object):
             for bit in bits:
                 name += bytes([el[bit]])
 
-        return name.replace(b'\xff',b'').decode()
+        return name.replace(b'\xff',b'').replace(b'\x00', b'').decode()
 
     def __get_time(self, file):
         date_creation = int.from_bytes(file[-16:-14], 'little')
