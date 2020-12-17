@@ -1,59 +1,47 @@
-def print_info(filename:str, check: bool) -> None:
-    """
-    Functions that print all useful information about FAT(X) img
-    """
-    with open(filename, 'rb') as f:
-        data = f.read(64)
+class FAT(object):
+    def __init__(self, filename):
+        with open(filename, 'rb') as f:
+            data = f.read()
 
-    ss = int.from_bytes(data[0xB:0xD], 'little')
-    table_info = {
-        'sector_size':      int.from_bytes(data[0xB:0xD], 'little'),
-        'cluster_size':     ss * data[0xD],
-        'reserved_sectors': int.from_bytes(data[0xE:0x10], 'little'),
-        'number_of_fat':    data[0x10],
-        'number_of_root':   int.from_bytes(data[0x11:0x13], 'little'),
-        'mft_size':         ss * int.from_bytes(data[0x16:0x18], 'little'),
-        'fs_type':          data[0x36:0x3B].decode(),
-    }
-    table_info.update(
-        {
-            'f_addr_table': table_info['reserved_sectors']*table_info['sector_size']
-        }
-    )
+        self.data             = data
+        self.sector_size      = int.from_bytes(data[0xB:0xD], 'little')
+        self.cluster_size     = self.sector_size * data[0xD]
+        self.reserved_sectors = int.from_bytes(data[0xE:0x10], 'little')
+        self.number_of_fat    = data[0x10]
+        self.number_of_root   = int.from_bytes(data[0x11:0x13], 'little')
+        self.mft_size         = self.sector_size * int.from_bytes(data[0x16:0x18], 'little')
+        self.fs_type          = data[0x36:0x3B].decode()
+        self.f_mft_table      = self.reserved_sectors*self.sector_size
+        self.s_mft_table      = self.f_mft_table + self.mft_size
+        self.root_addr        = self.s_mft_table + self.mft_size
+        self.data_addr        = self.root_addr + (self.number_of_root * 0x20)
+        self.files            = {}
 
-    table_info.update(
-        {
-            's_addr_table': table_info['f_addr_table']+table_info['mft_size'],
-        }
-    )
+    def print_info(self):
+        info =   'Информация о файловой системе\n\n'
+        info += f'Размер сектора: {hex(self.sector_size)}\n'
+        info += f'Размер кластера: {hex(self.cluster_size)}\n'
+        info += f'Количество зарезервированных секторов: {hex(self.reserved_sectors)}\n'
+        info += f'Количество таблиц FAT: {hex(self.number_of_fat)}\n'
+        info += f'Количество записей корневой директории: {hex(self.number_of_root)}\n'
+        info += f'Размер одной таблицы FAT: {hex(self.mft_size)}\n'
+        info += f'Тип файловой системы: {self.fs_type}\n'
+        info += f'Адрес таблицы FAT1: {hex(self.f_mft_table)}\n'
+        info += f'Адрес таблицы FAT2: {hex(self.s_mft_table)}\n'
+        info += f'Адрес корневой директории: {hex(self.root_addr)}\n'
+        info += f'Адрес начала данных: {hex(self.data_addr)}'
 
-    table_info.update(
-        {
-            'root_addr':    table_info['s_addr_table']+table_info['mft_size']
-        }
-    )
-
-    info  = f'Размер сектора: {hex(table_info["sector_size"])}\n'
-    info += f'Размер кластера: {hex(table_info["cluster_size"])}\n'
-    info += f'Количество зарезервированных секторов: {hex(table_info["reserved_sectors"])}\n'
-    info += f'Количество таблиц FAT: {hex(table_info["number_of_fat"])}\n'
-    info += f'Количество записей корневой директории: {hex(table_info["number_of_root"])}\n'
-    info += f'Размер одной таблицы FAT: {hex(table_info["mft_size"])}\n'
-    info += f'Тип файловой системы: {table_info["fs_type"]}\n\n'
-    info += f'Адрес первой таблицы FAT: {hex(table_info["f_addr_table"])}\n'
-    info += f'Адрес второй таблицы FAT: {hex(table_info["s_addr_table"])}\n'
-    info += f'Адрес корневой директории: {hex(table_info["root_addr"])}'
-
-
-    if check:
         print(info)
-    else:
-        return table_info
-
-def print_catalogs(filename: str, table_info: dict) -> None:
-    # TODO: print tree of files in img
-    with open(filename, 'rb') as f:
-        data = f.read()
-        
-    pass
     
+    def print_catalogs(self):
+        BS = 32
+        files = []
+        RA = self.root_addr
+        i = 0
+        while True:
+            count = self.data[RA+BS*i]
+            if count == 0:
+                break
+            
+            files.append(self.data[RA + BS*i: RA + BS*(i+count-0x3F)])
+            i += (count - 0x3F)
