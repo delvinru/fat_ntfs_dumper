@@ -4,17 +4,17 @@ import sys
 from lib.util import *
 
 def main(args):
-    # Step 1
-    if args.info:
-        get_info_about_filesystem(args)
-        exit(0)
-    
     if args.list:
         get_info_about_catalogs(args)
         exit(0)
 
+    if args.info:
+        get_info_about_filesystem(args)
+        exit(0)
+    
+
 if __name__ == "__main__":
-    usage = """Usage:
+    usage = """Examples:
 Print info about root directory:
 python3 main.py -f testfile.img -l /
 
@@ -51,8 +51,7 @@ python3 main.py -f testfile.img -l /catalog/somefile.txt -e
 
     parser.add_argument(
         '-l', '--list',
-        metavar="<file> or <directory with / in end>",
-        default='/',
+        metavar="<file> or <directory>",
         help='Print info about existing files'
     )
 
@@ -68,9 +67,16 @@ python3 main.py -f testfile.img -l /catalog/somefile.txt -e
         help='Extract file or files from path'
     )
 
-    args = parser.parse_args()
+    parser.add_argument(
+        '-r', '--restore',
+        action='store_true',
+        help='Restore deleted files'
+    )
+
     if len(sys.argv) < 2:
         parser.print_help()
         exit(0)
+
+    args = parser.parse_args()
     # Run main function
     main(args)

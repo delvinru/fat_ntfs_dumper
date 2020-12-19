@@ -1,4 +1,5 @@
 from datetime import datetime
+import os
 import json
 from string import printable
 
@@ -13,6 +14,8 @@ class FAT(object):
 
         self.catalog          = args.list
         self.json             = args.json
+        self.extract          = args.extract
+        self.restore          = args.restore
 
         self.data             = data
         self.sector_size      = int.from_bytes(data[0xB:0xD], 'little')
@@ -53,8 +56,6 @@ class FAT(object):
             print(json.dumps(self.files))
             exit(0)
 
-        print(path)
-
         if len(path) == 0:
             self.__print_entity(self.files)
             exit(0)
@@ -63,19 +64,21 @@ class FAT(object):
             self.__print_entity(entity)
             exit(0)
 
-
     def __find_entity_by_path(self, path, entities) -> list:
-            
         for entity in entities:
             if entity['Name'] == path[0]:
                 if entity['Name'] == path[0]:
                     path.pop(0)
+                    
                     if len(path) == 0:
                         return entity
+
                     return self.__find_entity_by_path(path, entity['Elements'])
     
     def __print_entity(self, entity : list):
-        print('Listing catalog:', self.catalog, end='\n\n')
+        if not self.extract:
+            print('Listing catalog:', self.catalog, end='\n\n')
+
         if type(entity) != list:
             try:
                 if entity['Type'] == 'f':
@@ -100,8 +103,25 @@ class FAT(object):
             print(info)
     
     def __extract_entity(self, entity):
-        print('while not supported')
-        pass
+        f_addr = self.data_addr + self.cluster_size * (int(entity['Cluster'], 16) - 2)
+        s_addr = f_addr + (int(entity['Size']))
+        file_data = self.data[f_addr:s_addr]
+        if not self.extract:
+            print('Адрес начала записи:', hex(f_addr))
+            print('Адрес конца записи:', hex(s_addr))
+        try:
+            file_data = file_data.decode()
+        except UnicodeDecodeError:
+            pass
+
+        if len(file_data) > 1024:
+            print('The file is too large, it was written to the extracted folder.')
+            if not os.path.exists('extracted/'):
+                os.makedirs('extracted')
+            with open('extracted/'+entity['Name'], 'wb') as f:
+                f.write(file_data)
+        else:
+            print(file_data)
 
     def __parse_dir(self, start_addr: int, subdir: bool) -> None:
         BS = 32
@@ -270,4 +290,3 @@ class FAT(object):
     def __get_size(self, file):
         size = int.from_bytes(file[-4:-1], 'little')
         return str(size)
-    
