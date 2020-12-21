@@ -112,13 +112,44 @@ class FAT(object):
             print(info)
     
     def __extract_entity(self, entity):
-        f_addr = self.data_addr + self.cluster_size * (int(entity['Cluster'], 16) - 2)
-        s_addr = f_addr + (int(entity['Size']))
-        file_data = self.data[f_addr:s_addr]
-        if not self.extract:
-            print('Адрес начала записи:', hex(f_addr))
-            print('Адрес конца записи:', hex(s_addr))
+        clusters = [int(entity['Cluster'], 16)]
+        # f_addr = self.data_addr + self.cluster_size * (int(entity['Cluster'], 16) - 2)
 
+        # Parse fat record
+        counter = clusters[0]
+        val = counter
+        while val != 0xFFFF:
+            val = self.data[self.f_fat_table + counter*2:self.f_fat_table+(counter+1)*2]
+            counter += 1
+            val = int.from_bytes(val, 'little') & 0xFFFF
+            clusters.append(val)
+
+            # For deleted files restore just one sector
+            # TODO: think about that
+            if entity['isDeleted'] == True:
+                break
+
+            if len(clusters) < int(entity['Size']) / self.cluster_size and val == 0xFFFF:
+                clusters.pop()
+                val = 0
+
+        # Remove 0xFFFF in end of sectors list
+        clusters.pop()
+        file_data = b''
+
+        # Read entity
+        remaing_data = int(entity['Size'])
+        for cluster in clusters:
+            f_addr = self.data_addr + self.cluster_size * (cluster - 2)
+
+            if remaing_data > self.cluster_size:
+                s_addr = f_addr + self.cluster_size
+            else:
+                s_addr = f_addr + remaing_data
+
+            remaing_data -= self.cluster_size
+            file_data += self.data[f_addr : s_addr]
+        
         if len(file_data) > 1024 or self.extract:
             if not os.path.exists('extracted/'):
                 os.mkdir('extracted')
