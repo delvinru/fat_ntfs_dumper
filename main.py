@@ -14,6 +14,7 @@ def main(args):
     
 
 if __name__ == "__main__":
+
     usage = """Examples:
 Print info about root directory:
 python3 main.py -f testfile.img -l /
@@ -78,5 +79,6 @@ python3 main.py -f testfile.img -l /catalog/somefile.txt -e
         exit(0)
 
     args = parser.parse_args()
+
     # Run main function
     main(args)

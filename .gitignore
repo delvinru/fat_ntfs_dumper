@@ -1,4 +1,10 @@
 # Ignore test folder with big imagers
-test/*
+test/
 # Ignore pycache folder
 lib/__pycache__
+# Ignore vscode shit
+.vscode/
+# Ignore mypy linter cache
+.mypy_cache
+# Ignore extracted folder
+extracted/

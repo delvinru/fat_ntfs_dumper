@@ -1,6 +1,6 @@
 from lib.fat import *
 
-def get_info_about_filesystem(args: dict) -> str:
+def get_info_about_filesystem(args) -> None:
     with open(args.file, 'rb') as f:
         data = f.read(64)
     

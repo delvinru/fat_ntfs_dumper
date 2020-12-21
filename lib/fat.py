@@ -23,11 +23,11 @@ class FAT(object):
         self.reserved_sectors = int.from_bytes(data[0xE:0x10], 'little')
         self.number_of_fat    = data[0x10]
         self.number_of_root   = int.from_bytes(data[0x11:0x13], 'little')
-        self.mft_size         = self.sector_size * int.from_bytes(data[0x16:0x18], 'little')
+        self.fat_size         = self.sector_size * int.from_bytes(data[0x16:0x18], 'little')
         self.fs_type          = data[0x36:0x3B].decode()
-        self.f_mft_table      = self.reserved_sectors*self.sector_size
-        self.s_mft_table      = self.f_mft_table + self.mft_size
-        self.root_addr        = self.s_mft_table + self.mft_size
+        self.f_fat_table      = self.reserved_sectors*self.sector_size
+        self.s_fat_table      = self.f_fat_table + self.fat_size
+        self.root_addr        = self.s_fat_table + self.fat_size
         self.data_addr        = self.root_addr + (self.number_of_root * 0x20)
         self.files            = [] 
         self.tmp              = []
@@ -39,16 +39,18 @@ class FAT(object):
         info += f'Количество зарезервированных секторов: {hex(self.reserved_sectors)}\n'
         info += f'Количество таблиц FAT: {hex(self.number_of_fat)}\n'
         info += f'Количество записей корневой директории: {hex(self.number_of_root)}\n'
-        info += f'Размер одной таблицы FAT: {hex(self.mft_size)}\n'
+        info += f'Размер одной таблицы FAT: {hex(self.fat_size)}\n'
         info += f'Тип файловой системы: {self.fs_type}\n'
-        info += f'Адрес таблицы FAT1: {hex(self.f_mft_table)}\n'
-        info += f'Адрес таблицы FAT2: {hex(self.s_mft_table)}\n'
+        info += f'Адрес таблицы FAT1: {hex(self.f_fat_table)}\n'
+        info += f'Адрес таблицы FAT2: {hex(self.s_fat_table)}\n'
         info += f'Адрес корневой директории: {hex(self.root_addr)}\n'
         info += f'Адрес начала данных: {hex(self.data_addr)}'
 
         print(info)
     
     def print_catalogs(self) -> None:
+        """List specified catalog"""
+
         self.__init_entities()
         path = [x for x in self.catalog.split('/') if x]
 
@@ -64,7 +66,9 @@ class FAT(object):
             self.__print_entity(entity)
             exit(0)
 
-    def __find_entity_by_path(self, path, entities) -> list:
+    def __find_entity_by_path(self, path: list, entities: dict):
+        """Internal function for recursive find entity in self.files dict"""
+
         for entity in entities:
             if entity['Name'] == path[0]:
                 if entity['Name'] == path[0]:
@@ -75,21 +79,26 @@ class FAT(object):
 
                     return self.__find_entity_by_path(path, entity['Elements'])
     
-    def __print_entity(self, entity : list):
-        if not self.extract:
-            print('Listing catalog:', self.catalog, end='\n\n')
+    def __print_entity(self, entity) -> None:
+        """Just print specified catalog or entity"""
 
-        if type(entity) != list:
+        if not self.extract:
+            print('Listing:', self.catalog, end='\n\n')
+        if type(entity) == dict:
             try:
                 if entity['Type'] == 'f':
                     self.__extract_entity(entity)
                     exit(0)
             except TypeError:
-                print('[!] Error, file or dir not exist')
+                print('[!] File not exist')
                 exit(0)
 
-            if entity['Type'] == 'd':
-                entity = entity['Elements']
+            try:
+                if entity['Type'] == 'd':
+                    entity = entity['Elements']
+            except TypeError:
+                print('[!] Directory not exists!')
+                exit(0)
 
         for el in entity:
             directory = ''
@@ -109,17 +118,14 @@ class FAT(object):
         if not self.extract:
             print('Адрес начала записи:', hex(f_addr))
             print('Адрес конца записи:', hex(s_addr))
-        try:
-            file_data = file_data.decode()
-        except UnicodeDecodeError:
-            pass
 
-        if len(file_data) > 1024:
-            print('The file is too large, it was written to the extracted folder.')
+        if len(file_data) > 1024 or self.extract:
             if not os.path.exists('extracted/'):
-                os.makedirs('extracted')
+                os.mkdir('extracted')
             with open('extracted/'+entity['Name'], 'wb') as f:
                 f.write(file_data)
+
+            print(f'File {entity["Name"]} was save in extracted/')
         else:
             print(file_data)
 
@@ -179,52 +185,32 @@ class FAT(object):
             else:
                 long_name = self.__get_long_name(el)
             
+            parent_obj = {
+                "Type": filetype,
+                "8DOT3Name": shortname,
+                'Name' : long_name,
+                'Size' : size,
+                'CreateTime' : time,
+                'Cluster' : cluster,
+                'isDeleted' : is_deleted
+            }
+
             if filetype == 'd':
+                parent_obj.update({'Elements': []})
                 if not subdir:
-                    self.files.append({
-                        "Type": filetype,
-                        "8DOT3Name": shortname,
-                        'Name' : long_name,
-                        'Size' : size,
-                        'CreateTime' : time,
-                        'Cluster' : cluster,
-                        'isDeleted' : is_deleted,
-                        'Elements': []
-                    })
+                    print(parent_obj)
+                    self.files.append(parent_obj)
                 else:
-                    self.tmp.append({
-                        "Type": filetype,
-                        "8DOT3Name": shortname,
-                        'Name' : long_name,
-                        'Size' : size,
-                        'CreateTime' : time,
-                        'Cluster' : cluster,
-                        'isDeleted' : is_deleted,
-                        'Elements': []
-                    })
+                    self.tmp.append(parent_obj)
             else:
                 if not subdir:
-                    self.files.append({
-                        "Type": filetype,
-                        "8DOT3Name": shortname,
-                        'Name' : long_name,
-                        'Size' : size,
-                        'CreateTime' : time,
-                        'Cluster' : cluster,
-                        'isDeleted' : is_deleted
-                    })
+                    self.files.append(parent_obj)
                 else:
-                    self.tmp.append({
-                        "Type": filetype,
-                        "8DOT3Name": shortname,
-                        'Name' : long_name,
-                        'Size' : size,
-                        'CreateTime' : time,
-                        'Cluster' : cluster,
-                        'isDeleted' : is_deleted,
-                    })
+                    self.tmp.append(parent_obj)
 
     def __init_entities(self):
+        """Init all entities in file system to json dict, for nice work"""
+
         # parse root directory
         self.__parse_dir(self.root_addr, False)
 
@@ -246,9 +232,13 @@ class FAT(object):
         self.files = recursive_parse_dir(self.files)
         
     def __get_cluster(self, file):
+        """Extract data cluster from file"""
+
         return hex(int.from_bytes(file[-6:-4], 'little'))
 
     def __get_name(self, file):
+        """Extract file name"""
+
         name = file[-32:-21]
         # remove non printable characher
         fpart = ''.join(list(filter(lambda x: x in printable, name[:8].rstrip().decode(errors='ignore'))))
@@ -259,6 +249,8 @@ class FAT(object):
             return fpart + '.' + lpart
 
     def __get_long_name(self, file):
+        """Extract long file name"""
+
         BS = 32
         bits = [1, 3, 5, 7, 9, 14, 16, 18, 20, 22, 24, 28, 30]
         name = b''
@@ -270,6 +262,8 @@ class FAT(object):
         return name.replace(b'\xff',b'').replace(b'\x00', b'').decode()
 
     def __get_time(self, file):
+        """Extract time from file"""
+
         date_creation = int.from_bytes(file[-16:-14], 'little')
 
         day   = str(date_creation & 0x1f)
@@ -279,6 +273,8 @@ class FAT(object):
         return day + '-' + month + '-' + year
     
     def __get_type(self, file):
+        """Detect type of file"""
+
         attr =  file[-21]
         if attr == self.DIR_ATTRIBUTE:
             return 'd'
@@ -288,5 +284,7 @@ class FAT(object):
             return '?'
     
     def __get_size(self, file):
+        """Extract file size"""
+
         size = int.from_bytes(file[-4:-1], 'little')
         return str(size)
