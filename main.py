@@ -52,7 +52,7 @@ python3 main.py -f testfile.img -l /catalog/somefile.txt -e
 
     parser.add_argument(
         '-l', '--list',
-        metavar="<file> or <directory>",
+        metavar="<file> or <dir>",
         help='Print info about existing files'
     )
 
