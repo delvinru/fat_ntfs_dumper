@@ -198,7 +198,6 @@ class FAT(object):
             if filetype == 'd':
                 parent_obj.update({'Elements': []})
                 if not subdir:
-                    print(parent_obj)
                     self.files.append(parent_obj)
                 else:
                     self.tmp.append(parent_obj)
