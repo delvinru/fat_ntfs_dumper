@@ -11,6 +11,14 @@ def main(args):
     if args.info:
         get_info_about_filesystem(args)
         exit(0)
+
+    if args.write:
+        write_file(args) 
+        exit(0)
+    
+    if args.mkdir:
+        create_directory(args)
+        exit(0)
     
 
 if __name__ == "__main__":
@@ -69,9 +77,21 @@ python3 main.py -f testfile.img -l /catalog/somefile.txt -e
     )
 
     parser.add_argument(
-        '-r', '--restore',
+        '-d', '--deleted',
         action='store_true',
-        help='Restore deleted files'
+        help='Show deleted files'
+    )
+
+    parser.add_argument(
+        '-w', '--write',
+        metavar='<file>',
+        help='Write file to file system'
+    )
+
+    parser.add_argument(
+        '-m', '--mkdir',
+        metavar='<dir_name>',
+        help='Create directory in file system'
     )
 
     if len(sys.argv) < 2:

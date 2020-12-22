@@ -12,6 +12,12 @@ def get_info_about_filesystem(args) -> None:
         FAT(args).print_info()
     
 
-def get_info_about_catalogs(args: dict) -> None:
+def get_info_about_catalogs(args) -> None:
     obj = FAT(args)
     obj.print_catalogs()
+
+def write_file(args) -> None:
+    print('in progress')
+
+def create_directory(args) -> None:
+    print('To be continued...')

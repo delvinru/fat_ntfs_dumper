@@ -15,7 +15,7 @@ class FAT(object):
         self.catalog          = args.list
         self.json             = args.json
         self.extract          = args.extract
-        self.restore          = args.restore
+        self.show_deleted     = args.deleted
 
         self.data             = data
         self.sector_size      = int.from_bytes(data[0xB:0xD], 'little')
@@ -103,7 +103,10 @@ class FAT(object):
         for el in entity:
             directory = ''
             isdeleted = ''
+
             if el['isDeleted']:
+                if not self.show_deleted:
+                    continue
                 isdeleted = ' (File deleted)'
 
             if el['Type'] == 'd':
@@ -111,7 +114,7 @@ class FAT(object):
             info  = f"{el['Type']} {el['CreateTime']} {el['Name']}{directory} ({el['8DOT3Name']}) Cluster:{el['Cluster']} Size:{el['Size']}{isdeleted}"
             print(info)
     
-    def __extract_entity(self, entity):
+    def __extract_entity(self, entity) -> None:
         clusters = [int(entity['Cluster'], 16)]
         # f_addr = self.data_addr + self.cluster_size * (int(entity['Cluster'], 16) - 2)
 
@@ -197,9 +200,9 @@ class FAT(object):
 
         self.__parse_file_entinity(entry, subdir)
 
-    def __parse_file_entinity(self, entry : list, subdir: bool):
+    def __parse_file_entinity(self, entry : list, subdir: bool) -> None:
         for el in entry:
-            long_name  = False
+            long_name  = ''
             is_deleted = False
 
             if el[0] == 0xE5:
@@ -238,7 +241,7 @@ class FAT(object):
                 else:
                     self.tmp.append(parent_obj)
 
-    def __init_entities(self):
+    def __init_entities(self) -> None:
         """Init all entities in file system to json dict, for nice work"""
 
         # parse root directory
@@ -261,12 +264,12 @@ class FAT(object):
         # parse others directory
         self.files = recursive_parse_dir(self.files)
         
-    def __get_cluster(self, file):
+    def __get_cluster(self, file) -> str:
         """Extract data cluster from file"""
 
         return hex(int.from_bytes(file[-6:-4], 'little'))
 
-    def __get_name(self, file):
+    def __get_name(self, file) -> str:
         """Extract file name"""
 
         name = file[-32:-21]
@@ -278,7 +281,7 @@ class FAT(object):
         else:
             return fpart + '.' + lpart
 
-    def __get_long_name(self, file):
+    def __get_long_name(self, file) -> str:
         """Extract long file name"""
 
         BS = 32
@@ -291,7 +294,7 @@ class FAT(object):
 
         return name.replace(b'\xff',b'').replace(b'\x00', b'').decode()
 
-    def __get_time(self, file):
+    def __get_time(self, file) -> str:
         """Extract time from file"""
 
         date_creation = int.from_bytes(file[-16:-14], 'little')
@@ -302,7 +305,7 @@ class FAT(object):
 
         return day + '-' + month + '-' + year
     
-    def __get_type(self, file):
+    def __get_type(self, file) -> str:
         """Detect type of file"""
 
         attr =  file[-21]
@@ -313,8 +316,12 @@ class FAT(object):
         else:
             return '?'
     
-    def __get_size(self, file):
+    def __get_size(self, file) -> str:
+    
         """Extract file size"""
 
         size = int.from_bytes(file[-4:-1], 'little')
         return str(size)
+    
+    def write_file(self) -> None:
+        pass
