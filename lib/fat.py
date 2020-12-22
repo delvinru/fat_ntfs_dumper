@@ -16,8 +16,10 @@ class FAT(object):
         self.json             = args.json
         self.extract          = args.extract
         self.show_deleted     = args.deleted
+        self.create_file      = args.write
 
         self.data             = data
+        self.oem              = self.data[0x3:0xB].decode()
         self.sector_size      = int.from_bytes(data[0xB:0xD], 'little')
         self.cluster_size     = self.sector_size * data[0xD]
         self.reserved_sectors = int.from_bytes(data[0xE:0x10], 'little')
@@ -34,6 +36,7 @@ class FAT(object):
 
     def print_info(self) -> None:
         info =   'Информация о файловой системе\n\n'
+        info += f'Имя OEM: {self.oem}\n'
         info += f'Размер сектора: {hex(self.sector_size)}\n'
         info += f'Размер кластера: {hex(self.cluster_size)}\n'
         info += f'Количество зарезервированных секторов: {hex(self.reserved_sectors)}\n'
@@ -324,4 +327,25 @@ class FAT(object):
         return str(size)
     
     def write_file(self) -> None:
+        """
+        For write file need change FAT1 and FAT2
+        Make record in root directory or in subdirectory
+        That's all?
+
+        Maybe delete --create <dir>
+        We should goes through all directories in self.files and if folder not exist,
+        create folder, after this we should create file_entry
+        Steps:
+        1. If dir not exists create folder_entry
+        2. Create file_entry in this directory
+        3. Done
+
+        http://elm-chan.org/docs/fat_e.html#fat_determination
+        """
+
+        pass
+
+    def __create_folder_entry(self) -> None:
+        """
+        """
         pass
