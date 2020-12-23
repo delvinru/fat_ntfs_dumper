@@ -1,5 +1,6 @@
 from lib.fat import *
 
+
 def get_info_about_filesystem(args) -> None:
     with open(args.file, 'rb') as f:
         data = f.read(64)
@@ -17,7 +18,8 @@ def get_info_about_catalogs(args) -> None:
     obj.print_catalogs()
 
 def write_file(args) -> None:
-    print('in progress')
+    obj = FAT(args)
+    obj.write_file()
 
 def create_directory(args) -> None:
     print('To be continued...')

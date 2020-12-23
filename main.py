@@ -3,6 +3,7 @@ import sys
 
 from lib.util import *
 
+
 def main(args):
     if args.list:
         get_info_about_catalogs(args)
@@ -37,7 +38,7 @@ python3 main.py -f testfile.img -l /catalog/somefile.txt -e
     parser = argparse.ArgumentParser(
         description='Help menu for program',
         epilog = usage,
-        formatter_class=argparse.RawDescriptionHelpFormatter
+        formatter_class=argparse.RawTextHelpFormatter
     )
 
     parser.add_argument(
@@ -84,8 +85,11 @@ python3 main.py -f testfile.img -l /catalog/somefile.txt -e
 
     parser.add_argument(
         '-w', '--write',
-        metavar='<file>',
-        help='Write file to file system'
+        nargs=2,
+        metavar=('<from>', '<to>'),
+        help='Write file to file system\n'
+             'Argument takes two args:\n'
+             '1 where i should read data; 2 where should I put the data'
     )
 
     parser.add_argument(
@@ -99,6 +103,5 @@ python3 main.py -f testfile.img -l /catalog/somefile.txt -e
         exit(0)
 
     args = parser.parse_args()
-
     # Run main function
     main(args)

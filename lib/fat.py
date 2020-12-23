@@ -1,6 +1,8 @@
-from datetime import datetime
-import os
 import json
+import os
+import pathlib
+from datetime import datetime
+from math import ceil
 from string import printable
 
 
@@ -16,7 +18,11 @@ class FAT(object):
         self.json             = args.json
         self.extract          = args.extract
         self.show_deleted     = args.deleted
-        self.create_file      = args.write
+
+        if args.write:
+            self.file_for_write   = args.write[0]
+            self.path_where_write = args.write[1]
+            self.file_entity      = {}
 
         self.data             = data
         self.oem              = self.data[0x3:0xB].decode()
@@ -33,6 +39,8 @@ class FAT(object):
         self.data_addr        = self.root_addr + (self.number_of_root * 0x20)
         self.files            = [] 
         self.tmp              = []
+
+        self.__init_entities()
 
     def print_info(self) -> None:
         info =   'Информация о файловой системе\n\n'
@@ -53,8 +61,6 @@ class FAT(object):
     
     def print_catalogs(self) -> None:
         """List specified catalog"""
-
-        self.__init_entities()
         path = [x for x in self.catalog.split('/') if x]
 
         if self.json:
@@ -76,7 +82,7 @@ class FAT(object):
             if entity['Name'] == path[0]:
                 if entity['Name'] == path[0]:
                     path.pop(0)
-                    
+
                     if len(path) == 0:
                         return entity
 
@@ -84,6 +90,9 @@ class FAT(object):
     
     def __print_entity(self, entity) -> None:
         """Just print specified catalog or entity"""
+        if entity is None:
+            print('[!] File or dir not exist')
+            exit(0)
 
         if not self.extract:
             print('Listing:', self.catalog, end='\n\n')
@@ -119,25 +128,57 @@ class FAT(object):
     
     def __extract_entity(self, entity) -> None:
         clusters = [int(entity['Cluster'], 16)]
-        # f_addr = self.data_addr + self.cluster_size * (int(entity['Cluster'], 16) - 2)
 
         # Parse fat record
         counter = clusters[0]
         val = counter
-        while val != 0xFFFF:
-            val = self.data[self.f_fat_table + counter*2:self.f_fat_table+(counter+1)*2]
-            counter += 1
-            val = int.from_bytes(val, 'little') & 0xFFFF
-            clusters.append(val)
+        N = clusters[0]
+        if self.fs_type == 'FAT16':
+            while val != 0xFFFF:
+                val = int.from_bytes(self.data[self.f_fat_table + counter*2:self.f_fat_table+(counter+1)*2], 'little') & 0xFFFF
+                counter += 1
+                clusters.append(val)
 
-            # For deleted files restore just one sector
-            # TODO: think about that
-            if entity['isDeleted'] == True:
-                break
+                # For deleted files restore just one sector
+                # TODO: think about that
+                if entity['isDeleted'] == True:
+                    break
 
-            if len(clusters) < int(entity['Size']) / self.cluster_size and val == 0xFFFF:
-                clusters.pop()
-                val = 0
+                if len(clusters) < int(entity['Size']) / self.cluster_size and val == 0xFFFF:
+                    clusters.pop()
+                    val = 0
+        elif self.fs_type == 'FAT12':
+            # counter = 0
+            while N != 0x11:
+                offset = N + N // 2
+                bits = self.data[self.f_fat_table + N: self.f_fat_table + offset]
+                print(bits)
+
+                # don't work
+                if N & 1:
+                    print(hex(bits[0]), hex(bits[1]))
+                    cluster = ((bits[1] & 0xFF) << 4) % 0x100 | bits[0] & 0xf0
+                    # cluster = bits[0] >> 4 | (bits[1] << 4)
+                    # cluster = (bits[1] & 0x0f) << 8 | bits[0] & 0xff
+                else:
+                    print(hex(bits[0]), hex(bits[1]))
+                    # cluster = (bits[1] & 0xff) << 8 | (bits[0] & 0xf0) >> 4
+                    cluster = bits[0] | ((bits[1] & 0x0f) << 8)
+
+                print('get cluster', hex(cluster)) 
+                # exit(0)
+                N += 1
+                val = cluster
+                # clusters.append(cluster)
+
+                # # For deleted files restore just one sector
+                # # TODO: think about that
+                # if entity['isDeleted'] == True:
+                #     break
+
+                # if len(clusters) < int(entity['Size']) / self.cluster_size and val == 0xFFFF:
+                #     clusters.pop()
+                #     val = 0
 
         # Remove 0xFFFF in end of sectors list
         clusters.pop()
@@ -328,24 +369,207 @@ class FAT(object):
     
     def write_file(self) -> None:
         """
-        For write file need change FAT1 and FAT2
-        Make record in root directory or in subdirectory
-        That's all?
-
-        Maybe delete --create <dir>
-        We should goes through all directories in self.files and if folder not exist,
-        create folder, after this we should create file_entry
-        Steps:
-        1. If dir not exists create folder_entry
-        2. Create file_entry in this directory
-        3. Done
-
         http://elm-chan.org/docs/fat_e.html#fat_determination
         """
+        self.file_entity = {
+            "Type": "f",
+            "8DOT3Name": "",
+            'Name' : "",
+            'Size' : 0,
+            'CreateTime' : "",
+            'Cluster' : "",
+            'isDeleted' : False
+        }
 
-        pass
+        fname = pathlib.Path(self.file_for_write)
+        if not fname.exists():
+            print('[!] File for write in FAT not exists')
+            exit(0)
+        
+        # get base info about file
+        fstat = fname.stat()
+        # filename
+        filename = fname.parts[-1]
+        if len(filename) > 8:
+            short_name = (filename[:6] + '~1' + fname.suffix[1:4].ljust(3, ' ')).upper()
+        else:
+            short_name = filename.upper().ljust(8, ' ')
+
+        # file size
+        size = fstat.st_size
+        # fat_time 
+        modification_time = self.__convert_date_to_fat(datetime.fromtimestamp(fstat.st_mtime))
+        last_access = self.__convert_date_to_fat(datetime.fromtimestamp(fstat.st_atime))
+        status_change = self.__convert_date_to_fat(datetime.fromtimestamp(fstat.st_ctime))
+
+        self.file_entity.update({
+            "8DOT3Name": short_name,
+            'Name': filename,
+            'Size' : size,
+            'ModificationTime' : modification_time,
+            'LastAccessTime' : last_access,
+            'StatusChangeTime' : status_change
+        })
+
+        """
+        need get free cluster, if filesize > 0x800 than allocate new clasters in fat table
+        else put in fat 0xffff
+        """
+        print(self.file_entity)
+        # craft fat table
+        cluster = self.__edit_fat_tables()
+        self.file_entity.update({'Cluster': hex(cluster)})
+
+        self.__craft_record(cluster)
+
+        # make record in some sectors
+
+    def __craft_record(self, cluster: int) -> None:
+        bits = [1, 3, 5, 7, 9, 14, 16, 18, 20, 22, 24, 28, 30]
+        count_records = ceil(len(self.file_entity['Name']) / 15)
+
+        # template
+        template = [0x43,0x74,0x00,0x00,0x00,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0x0F,0x00,0xB0,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0x00,0x00,0xFF,0xFF,0xFF,0xFF]
+        
+        if len(self.file_entity['Name']) >= 15:
+            print('ok craft long name')
+
+        tmp = []
+        lfn_sum = self.__create_sum(self.file_entity['8DOT3Name'])
+
+        # craft template for long name
+        k = 0
+        print('count records', count_records)
+        for i in range(1, count_records + 1):
+            if i == count_records:
+                template[0] = 0x40 + i
+            else:
+                template[0] = i
+
+            template[13] = lfn_sum
+
+            for j, bit in enumerate(bits):
+                string = self.file_entity['Name']
+                if k >= len(string):
+                    template[bit] = 0xFF
+                else:
+                    template[bit] = ord(string[k])
+                k += 1
+
+            tmp.append(b''.join([bytes([x]) for x in template]))
+        
+        print(tmp)
+        out = b''.join(tmp[::-1])
+        print(out)
+
+        # init template for short name
+        out += self.file_entity['8DOT3Name'].encode()   #name
+        out += bytes([self.FILE_ATTRIBUTE])             #file attr
+        out += b'\x00'                                  #reserved byte
+        out += b'\x64'                                  #crt_time_tenth optional
+        out += int.to_bytes(self.file_entity['ModificationTime'], 2, 'little')
+        out += int.to_bytes(self.file_entity['StatusChangeTime'], 2, 'little')
+        out += int.to_bytes(self.file_entity['LastAccessTime'], 2, 'little')
+        out += b'\x00\x00'
+        out += int.to_bytes(self.file_entity['ModificationTime'], 2, 'little')
+        out += int.to_bytes(self.file_entity['ModificationTime'], 2, 'little')
+        out += int.to_bytes(cluster, 2, 'little')
+        out += int.to_bytes(self.file_entity['Size'], 4, 'little')
+
+        BS = 32
+        i = 0
+        record = -1
+        while record != 0x00:
+            record = self.data[self.root_addr + BS*i]
+            i += 1
+
+        i -= 1        
+
+        data = list(self.data)
+        for j, el in enumerate(out):
+            data[self.root_addr + BS*i + j] = out[j]
+        
+        print('writing to table')
+        with open(self.file_for_write, 'rb') as f:
+            file_data = f.read()
+        
+        for i, el in enumerate(file_data):
+            data[self.data_addr + (cluster - 2)*self.cluster_size + i] = file_data[i]
+
+        self.data = bytes(data)
+        with open('shitfat.img', 'wb') as f:
+            f.write(self.data)
+
+        print('file created')
+
+    def __create_sum(self, name) -> int:
+        s = 0
+        for el in name:
+            s = ((s >> 1) + (s << 7) + ord(el) ) % 0x100
+        return s
+
+    def __edit_fat_tables(self) -> int:
+        fat = self.data[self.f_fat_table: self.f_fat_table + self.fat_size]
+
+        if self.fs_type == 'FAT16':
+            new_record = fat.rindex(b'\xff\xff') + 2
+
+            free_cluster = new_record // 0x2 + 1
+            if self.file_entity['Size'] > self.cluster_size:
+                clusters = int.to_bytes(free_cluster, 2, 'little')
+                for i in range(free_cluster, free_cluster + self.file_entity['Size'] // self.cluster_size):
+                    clusters += int.to_bytes(i, 2, 'little')
+                clusters += b'\xff\xff'
+            else:
+                clusters = b'\xff\xff'
+
+            data = list(self.data)
+
+            for i in range(len(clusters)):
+                data[self.f_fat_table + new_record + i] = clusters[i]
+                data[self.s_fat_table + new_record + i] = clusters[i]
+        elif self.fs_type == 'FAT12':
+            new_record = fat.rindex(b'\xff\x0f') + 1
+            free_cluster = fat[new_record] // 3
+            print('free', free_cluster)
+
+            if self.file_entity['Size'] > self.cluster_size:
+                clusters = int.to_bytes(free_cluster, 2, 'little')
+                for i in range(free_cluster, free_cluster + self.file_entity['Size'] // self.cluster_size):
+                    print(clusters)
+                    clusters += int.to_bytes(i, 2, 'little')
+                clusters += b'\xff\xff\x0f'
+            else:
+                clusters = b'\xff\x0f'
+
+            data = list(self.data)
+
+            for i in range(len(clusters)):
+                data[self.f_fat_table + new_record + i] = clusters[i]
+                data[self.s_fat_table + new_record + i] = clusters[i]
+            
+            free_cluster += 1
+
+        elif self.fs_type == 'FAT32':
+            print('not realized')
+            exit(0)
+        
+        self.data = bytes(data)
+        print('done')
+        return free_cluster - 1
+        # path = [x for x in self.path_where_write.split('/') if x]
 
     def __create_folder_entry(self) -> None:
         """
         """
         pass
+
+    # Fix this time isn't correct
+    def __convert_date_to_fat(self, objdate) -> int:
+        num = ((objdate.year - 80) << 25) % 0x10000 | \
+              ((objdate.month + 1) << 21)% 0x10000 | \
+              (objdate.day << 16)% 0x10000 |       \
+              (objdate.hour << 11)% 0x10000 |      \
+              (objdate.minute << 5)% 0x10000 |     \
+              (objdate.second >> 1)% 0x10000
+        return num
