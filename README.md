@@ -12,7 +12,8 @@ python3 main.py
 
 # Usage
 ```bash
-usage: main.py [-h] -f FILE [-t TYPE] [-i] [-l <file> or <dir>] [-j] [-e] [-r]
+usage: main.py [-h] -f FILE [-t TYPE] [-i] [-l <file> or <dir>] [-j] [-e] [-d] [-w <from> <to>]
+               [-m <dir_name>]
 
 Help menu for program
 
@@ -25,7 +26,13 @@ optional arguments:
                         Print info about existing files
   -j, --json            Print data in json
   -e, --extract         Extract file or files from path
-  -r, --restore         Restore deleted files
+  -d, --deleted         Show deleted files
+  -w <from> <to>, --write <from> <to>
+                        Write file to file system
+                        Argument takes two args:
+                        1 where i should read data; 2 where should I put the data
+  -m <dir_name>, --mkdir <dir_name>
+                        Create directory in file system
 
 Examples:
 Print info about root directory:
@@ -36,5 +43,5 @@ python3 main.py -f testfile.img -l /somecatalog/
 
 Extract file from path:
 python3 main.py -f testfile.img -l /somefile.txt -e
-python3 main.py -f testfile.img -l /catalog/somefile.txt -ee
+python3 main.py -f testfile.img -l /catalog/somefile.txt -e
 ```
