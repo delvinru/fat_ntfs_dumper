@@ -2,6 +2,9 @@
 Utility for analyzing FAT(12,16,32) and NTFS file systems
 (while work FAT)
 
+The program can display a list of files, view the contents for any FAT12,FAT16 files, also shows a list of deleted files and partially restores them.
+It is possible to write data to the FAT16 file system, writing to FAT12 is not implemented.
+
 # Install
 
 ```bash
@@ -12,15 +15,13 @@ python3 main.py
 
 # Usage
 ```bash
-usage: main.py [-h] -f FILE [-t TYPE] [-i] [-l <file> or <dir>] [-j] [-e] [-d] [-w <from> <to>]
-               [-m <dir_name>]
+usage: main.py [-h] -f FILE [-i] [-l <file> or <dir>] [-j] [-e] [-d] [-w <from> <to>]
 
 Help menu for program
 
 optional arguments:
   -h, --help            show this help message and exit
   -f FILE, --file FILE  Provide file for analyze
-  -t TYPE, --type TYPE  Provide file system version
   -i, --info            Print info about filesystem
   -l <file> or <dir>, --list <file> or <dir>
                         Print info about existing files
@@ -28,11 +29,9 @@ optional arguments:
   -e, --extract         Extract file or files from path
   -d, --deleted         Show deleted files
   -w <from> <to>, --write <from> <to>
-                        Write file to file system
+                        Write file to file system (ONLY FAT16)
                         Argument takes two args:
                         1 where i should read data; 2 where should I put the data
-  -m <dir_name>, --mkdir <dir_name>
-                        Create directory in file system
 
 Examples:
 Print info about root directory:

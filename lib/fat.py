@@ -40,6 +40,9 @@ class FAT(object):
         self.files            = [] 
         self.tmp              = []
 
+        if self.fs_type == 'FAT12':
+            self.fat12_clusters = []
+
         self.__init_entities()
 
     def print_info(self) -> None:
@@ -133,6 +136,7 @@ class FAT(object):
         counter = clusters[0]
         val = counter
         N = clusters[0]
+
         if self.fs_type == 'FAT16':
             while val != 0xFFFF:
                 val = int.from_bytes(self.data[self.f_fat_table + counter*2:self.f_fat_table+(counter+1)*2], 'little') & 0xFFFF
@@ -148,37 +152,10 @@ class FAT(object):
                     clusters.pop()
                     val = 0
         elif self.fs_type == 'FAT12':
-            # counter = 0
-            while N != 0x11:
-                offset = N + N // 2
-                bits = self.data[self.f_fat_table + N: self.f_fat_table + offset]
-                print(bits)
-
-                # don't work
-                if N & 1:
-                    print(hex(bits[0]), hex(bits[1]))
-                    cluster = ((bits[1] & 0xFF) << 4) % 0x100 | bits[0] & 0xf0
-                    # cluster = bits[0] >> 4 | (bits[1] << 4)
-                    # cluster = (bits[1] & 0x0f) << 8 | bits[0] & 0xff
-                else:
-                    print(hex(bits[0]), hex(bits[1]))
-                    # cluster = (bits[1] & 0xff) << 8 | (bits[0] & 0xf0) >> 4
-                    cluster = bits[0] | ((bits[1] & 0x0f) << 8)
-
-                print('get cluster', hex(cluster)) 
-                # exit(0)
-                N += 1
-                val = cluster
-                # clusters.append(cluster)
-
-                # # For deleted files restore just one sector
-                # # TODO: think about that
-                # if entity['isDeleted'] == True:
-                #     break
-
-                # if len(clusters) < int(entity['Size']) / self.cluster_size and val == 0xFFFF:
-                #     clusters.pop()
-                #     val = 0
+            self.__get_fat12_clusters()
+            clusters = self.fat12_clusters
+            clusters = clusters[N:]
+            clusters.insert(0, N)
 
         # Remove 0xFFFF in end of sectors list
         clusters.pop()
@@ -187,6 +164,10 @@ class FAT(object):
         # Read entity
         remaing_data = int(entity['Size'])
         for cluster in clusters:
+            # for fat12
+            if cluster == 0xfff:
+                continue
+
             f_addr = self.data_addr + self.cluster_size * (cluster - 2)
 
             if remaing_data > self.cluster_size:
@@ -415,7 +396,6 @@ class FAT(object):
         need get free cluster, if filesize > 0x800 than allocate new clasters in fat table
         else put in fat 0xffff
         """
-        print(self.file_entity)
         # craft fat table
         cluster = self.__edit_fat_tables()
         self.file_entity.update({'Cluster': hex(cluster)})
@@ -430,16 +410,11 @@ class FAT(object):
 
         # template
         template = [0x43,0x74,0x00,0x00,0x00,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0x0F,0x00,0xB0,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0x00,0x00,0xFF,0xFF,0xFF,0xFF]
-        
-        if len(self.file_entity['Name']) >= 15:
-            print('ok craft long name')
-
         tmp = []
         lfn_sum = self.__create_sum(self.file_entity['8DOT3Name'])
 
         # craft template for long name
         k = 0
-        print('count records', count_records)
         for i in range(1, count_records + 1):
             if i == count_records:
                 template[0] = 0x40 + i
@@ -458,9 +433,7 @@ class FAT(object):
 
             tmp.append(b''.join([bytes([x]) for x in template]))
         
-        print(tmp)
         out = b''.join(tmp[::-1])
-        print(out)
 
         # init template for short name
         out += self.file_entity['8DOT3Name'].encode()   #name
@@ -486,10 +459,11 @@ class FAT(object):
         i -= 1        
 
         data = list(self.data)
+
+        # create records in root dir
         for j, el in enumerate(out):
             data[self.root_addr + BS*i + j] = out[j]
         
-        print('writing to table')
         with open(self.file_for_write, 'rb') as f:
             file_data = f.read()
         
@@ -497,10 +471,10 @@ class FAT(object):
             data[self.data_addr + (cluster - 2)*self.cluster_size + i] = file_data[i]
 
         self.data = bytes(data)
-        with open('shitfat.img', 'wb') as f:
+        with open('edited_fat.img', 'wb') as f:
             f.write(self.data)
 
-        print('file created')
+        print('File was write in `edited_fat.img`')
 
     def __create_sum(self, name) -> int:
         s = 0
@@ -528,20 +502,34 @@ class FAT(object):
             for i in range(len(clusters)):
                 data[self.f_fat_table + new_record + i] = clusters[i]
                 data[self.s_fat_table + new_record + i] = clusters[i]
-        elif self.fs_type == 'FAT12':
-            new_record = fat.rindex(b'\xff\x0f') + 1
-            free_cluster = fat[new_record] // 3
-            print('free', free_cluster)
 
+            self.data = bytes(data)
+            return free_cluster - 1
+
+        elif self.fs_type == 'FAT12':
+            print('[!] I can\'t write in FAT12')
+            exit(0)
+
+            self.__get_fat12_clusters()
+            free_cluster = len(self.fat12_clusters) + 1
+
+            try:
+                index = fat.rfind(b'\x0f\xff')
+            except ValueError:
+                index = fat.rfind(b'\xf0\xff')
+
+            print(list(map(hex, self.fat12_clusters)))
+            print('free', free_cluster)
+            clusters = b''
             if self.file_entity['Size'] > self.cluster_size:
-                clusters = int.to_bytes(free_cluster, 2, 'little')
                 for i in range(free_cluster, free_cluster + self.file_entity['Size'] // self.cluster_size):
-                    print(clusters)
+                    print('generate cluster', hex(i))
                     clusters += int.to_bytes(i, 2, 'little')
                 clusters += b'\xff\xff\x0f'
             else:
                 clusters = b'\xff\x0f'
-
+            print('GET CLUSTERS', clusters)
+            exit(0)
             data = list(self.data)
 
             for i in range(len(clusters)):
@@ -549,14 +537,14 @@ class FAT(object):
                 data[self.s_fat_table + new_record + i] = clusters[i]
             
             free_cluster += 1
+            self.data = bytes(data)
+            return free_cluster
 
         elif self.fs_type == 'FAT32':
             print('not realized')
             exit(0)
+            return -1
         
-        self.data = bytes(data)
-        print('done')
-        return free_cluster - 1
         # path = [x for x in self.path_where_write.split('/') if x]
 
     def __create_folder_entry(self) -> None:
@@ -573,3 +561,28 @@ class FAT(object):
               (objdate.minute << 5)% 0x10000 |     \
               (objdate.second >> 1)% 0x10000
         return num
+
+    def __get_fat12_clusters(self) -> None:
+        counter = 0
+        cluster_1 = -1
+        cluster_2 = -1
+        clusters = []
+        while cluster_1 != 0x0 and cluster_2 != 0:
+            # grab three bytes
+            bits = self.data[self.f_fat_table + counter: self.f_fat_table + counter+3]
+            byte1 = bits[0]
+            byte2 = bits[1]
+            byte3 = bits[2]
+
+            cluster_1 = ((bits[1] & 0x0f) << 8) | bits[0] & 0xff
+            cluster_2 = ((bits[2] & 0xff) << 4) |  ( bits[1] & 0xf0 ) >> 4
+
+            print('get cluster', hex(cluster_1), hex(cluster_2)) 
+            clusters.append(cluster_1)
+            clusters.append(cluster_2)
+
+            counter += 3
+
+        clusters.pop()
+        clusters.pop()
+        self.fat12_clusters = clusters

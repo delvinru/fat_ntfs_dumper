@@ -1,5 +1,5 @@
 # Ignore test folder with big imagers
-test/
+# test/
 # Ignore pycache folder
 lib/__pycache__
 # Ignore vscode shit

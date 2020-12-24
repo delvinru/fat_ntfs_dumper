@@ -49,11 +49,6 @@ python3 main.py -f testfile.img -l /catalog/somefile.txt -e
     )
 
     parser.add_argument(
-        '-t', '--type',
-        help='Provide file system version'
-    )
-
-    parser.add_argument(
         '-i', '--info',
         action='store_true',
         help='Print info about filesystem'
@@ -87,15 +82,9 @@ python3 main.py -f testfile.img -l /catalog/somefile.txt -e
         '-w', '--write',
         nargs=2,
         metavar=('<from>', '<to>'),
-        help='Write file to file system\n'
+        help='Write file to file system (ONLY FAT16)\n'
              'Argument takes two args:\n'
              '1 where i should read data; 2 where should I put the data'
-    )
-
-    parser.add_argument(
-        '-m', '--mkdir',
-        metavar='<dir_name>',
-        help='Create directory in file system'
     )
 
     if len(sys.argv) < 2:
