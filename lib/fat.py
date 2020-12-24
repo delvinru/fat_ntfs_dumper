@@ -20,8 +20,7 @@ class FAT(object):
         self.show_deleted     = args.deleted
 
         if args.write:
-            self.file_for_write   = args.write[0]
-            self.path_where_write = args.write[1]
+            self.file_for_write   = args.write
             self.file_entity      = {}
 
         self.data             = data
@@ -519,16 +518,13 @@ class FAT(object):
                 index = fat.rfind(b'\xf0\xff')
 
             print(list(map(hex, self.fat12_clusters)))
-            print('free', free_cluster)
             clusters = b''
             if self.file_entity['Size'] > self.cluster_size:
                 for i in range(free_cluster, free_cluster + self.file_entity['Size'] // self.cluster_size):
-                    print('generate cluster', hex(i))
                     clusters += int.to_bytes(i, 2, 'little')
                 clusters += b'\xff\xff\x0f'
             else:
                 clusters = b'\xff\x0f'
-            print('GET CLUSTERS', clusters)
             exit(0)
             data = list(self.data)
 
@@ -544,8 +540,6 @@ class FAT(object):
             print('not realized')
             exit(0)
             return -1
-        
-        # path = [x for x in self.path_where_write.split('/') if x]
 
     def __create_folder_entry(self) -> None:
         """
@@ -577,7 +571,6 @@ class FAT(object):
             cluster_1 = ((bits[1] & 0x0f) << 8) | bits[0] & 0xff
             cluster_2 = ((bits[2] & 0xff) << 4) |  ( bits[1] & 0xf0 ) >> 4
 
-            print('get cluster', hex(cluster_1), hex(cluster_2)) 
             clusters.append(cluster_1)
             clusters.append(cluster_2)
 
